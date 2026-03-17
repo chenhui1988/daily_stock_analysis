@@ -248,7 +248,7 @@ async def parse_import(request: Request) -> ExtractFromImageResponse:
         500: {"description": "服务器错误", "model": ErrorResponse},
     },
     summary="获取股票实时行情",
-    description="获取指定股票的最新行情数据"
+    description="获取指定股票的最新行情数据，支持 A股、港股、美股与 Bursa Malaysia `.KL` 代码"
 )
 def get_stock_quote(stock_code: str) -> StockQuote:
     """
@@ -257,7 +257,7 @@ def get_stock_quote(stock_code: str) -> StockQuote:
     获取指定股票的最新行情数据
     
     Args:
-        stock_code: 股票代码（如 600519、00700、AAPL）
+        stock_code: 股票代码（如 600519、00700、AAPL、5183.KL）
         
     Returns:
         StockQuote: 实时行情数据
@@ -317,7 +317,7 @@ def get_stock_quote(stock_code: str) -> StockQuote:
         500: {"description": "服务器错误", "model": ErrorResponse},
     },
     summary="获取股票历史行情",
-    description="获取指定股票的历史 K 线数据"
+    description="获取指定股票的历史 K 线数据，支持 A股、港股、美股与 Bursa Malaysia `.KL` 代码"
 )
 def get_stock_history(
     stock_code: str,
@@ -330,7 +330,7 @@ def get_stock_history(
     获取指定股票的历史 K 线数据
     
     Args:
-        stock_code: 股票代码
+        stock_code: 股票代码（如 600519、00700、AAPL、5183.KL）
         period: K 线周期 (daily/weekly/monthly)
         days: 获取天数
         

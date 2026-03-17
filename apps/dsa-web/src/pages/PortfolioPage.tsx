@@ -16,6 +16,7 @@ import type {
   PortfolioImportBrokerItem,
   PortfolioImportCommitResponse,
   PortfolioImportParseResponse,
+  PortfolioMarket,
   PortfolioPositionItem,
   PortfolioRiskResponse,
   PortfolioSide,
@@ -76,6 +77,13 @@ function formatBrokerLabel(value: string, displayName?: string): string {
   return value;
 }
 
+function defaultCurrencyForMarket(market: PortfolioMarket): string {
+  if (market === 'hk') return 'HKD';
+  if (market === 'us') return 'USD';
+  if (market === 'my') return 'MYR';
+  return 'CNY';
+}
+
 const PortfolioPage: React.FC = () => {
   const [accounts, setAccounts] = useState<PortfolioAccountItem[]>([]);
   const [selectedAccount, setSelectedAccount] = useState<AccountOption>('all');
@@ -86,8 +94,8 @@ const PortfolioPage: React.FC = () => {
   const [accountForm, setAccountForm] = useState({
     name: '',
     broker: 'Demo',
-    market: 'cn' as 'cn' | 'hk' | 'us',
-    baseCurrency: 'CNY',
+    market: 'cn' as PortfolioMarket,
+    baseCurrency: defaultCurrencyForMarket('cn'),
   });
   const [costMethod, setCostMethod] = useState<PortfolioCostMethod>('fifo');
   const [snapshot, setSnapshot] = useState<PortfolioSnapshotResponse | null>(null);
@@ -475,7 +483,7 @@ const PortfolioPage: React.FC = () => {
         name,
         broker: accountForm.broker.trim() || undefined,
         market: accountForm.market,
-        baseCurrency: accountForm.baseCurrency.trim() || 'CNY',
+        baseCurrency: accountForm.baseCurrency.trim().toUpperCase() || defaultCurrencyForMarket(accountForm.market),
       });
       await loadAccounts();
       setSelectedAccount(created.id);
@@ -621,18 +629,32 @@ const PortfolioPage: React.FC = () => {
             />
             <input
               className="input-terminal text-sm"
-              placeholder="基准币（如 CNY/USD/HKD）"
+              placeholder="基准币（如 CNY/USD/HKD/MYR）"
               value={accountForm.baseCurrency}
               onChange={(e) => setAccountForm((prev) => ({ ...prev, baseCurrency: e.target.value.toUpperCase() }))}
             />
             <select
               className="input-terminal text-sm"
               value={accountForm.market}
-              onChange={(e) => setAccountForm((prev) => ({ ...prev, market: e.target.value as 'cn' | 'hk' | 'us' }))}
+              onChange={(e) => {
+                const nextMarket = e.target.value as PortfolioMarket;
+                setAccountForm((prev) => {
+                  const currentCurrency = prev.baseCurrency.trim().toUpperCase();
+                  const prevDefault = defaultCurrencyForMarket(prev.market);
+                  const nextDefault = defaultCurrencyForMarket(nextMarket);
+                  const shouldSyncCurrency = !currentCurrency || currentCurrency === prevDefault;
+                  return {
+                    ...prev,
+                    market: nextMarket,
+                    baseCurrency: shouldSyncCurrency ? nextDefault : prev.baseCurrency,
+                  };
+                });
+              }}
             >
               <option value="cn">市场：A 股（cn）</option>
               <option value="hk">市场：港股（hk）</option>
               <option value="us">市场：美股（us）</option>
+              <option value="my">市场：Bursa Malaysia（my）</option>
             </select>
             <button type="submit" className="btn-secondary text-sm" disabled={accountCreating}>
               {accountCreating ? '创建中...' : '创建账户'}

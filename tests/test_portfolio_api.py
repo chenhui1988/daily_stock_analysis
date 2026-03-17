@@ -149,6 +149,16 @@ class PortfolioApiTestCase(unittest.TestCase):
         detail = resp.json()
         self.assertEqual(detail.get("error"), "validation_error")
 
+    def test_create_my_account_defaults_base_currency_to_myr(self) -> None:
+        resp = self.client.post(
+            "/api/v1/portfolio/accounts",
+            json={"name": "MY Account", "broker": "Demo", "market": "my"},
+        )
+        self.assertEqual(resp.status_code, 200)
+        payload = resp.json()
+        self.assertEqual(payload["market"], "my")
+        self.assertEqual(payload["base_currency"], "MYR")
+
     def test_duplicate_trade_uid_returns_409(self) -> None:
         create_resp = self.client.post(
             "/api/v1/portfolio/accounts",

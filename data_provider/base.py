@@ -16,6 +16,7 @@
 
 import logging
 import random
+import re
 import time
 from threading import BoundedSemaphore, RLock, Thread
 from abc import ABC, abstractmethod
@@ -77,6 +78,7 @@ def normalize_stock_code(stock_code: str) -> str:
     - '920748.BJ'   -> '920748'   (strip .BJ suffix, BSE)
     - 'HK00700'     -> 'HK00700'  (keep HK prefix for HK stocks)
     - '1810.HK'     -> 'HK01810'  (normalize HK suffix to canonical prefix form)
+    - '5183.KL'     -> '5183.KL'  (preserve Bursa Malaysia Yahoo suffix form)
     - 'AAPL'        -> 'AAPL'     (keep US stock ticker as-is)
 
     This function is applied at the DataProviderManager layer so that
@@ -109,6 +111,8 @@ def normalize_stock_code(stock_code: str) -> str:
         base, suffix = code.rsplit('.', 1)
         if suffix.upper() == 'HK' and base.isdigit() and 1 <= len(base) <= 5:
             return f"HK{base.zfill(5)}"
+        if suffix.upper() == 'KL' and re.fullmatch(r"[A-Z0-9]{1,6}", base.upper()):
+            return f"{base.upper()}.KL"
         if suffix.upper() in ('SH', 'SZ', 'SS', 'BJ') and base.isdigit():
             return base
 
@@ -144,6 +148,12 @@ def _is_hk_market(code: str) -> bool:
     return False
 
 
+def _is_my_market(code: str) -> bool:
+    """判定是否为 Bursa Malaysia / Yahoo `.KL` 代码。"""
+    normalized = (code or "").strip().upper()
+    return bool(re.fullmatch(r"[A-Z0-9]{1,6}\.KL", normalized))
+
+
 def _is_etf_code(code: str) -> bool:
     """判定 A 股 ETF 基金代码（保守规则）。"""
     normalized = normalize_stock_code(code)
@@ -155,11 +165,13 @@ def _is_etf_code(code: str) -> bool:
 
 
 def _market_tag(code: str) -> str:
-    """返回市场标签: cn/us/hk."""
+    """返回市场标签: cn/us/hk/my."""
     if _is_us_market(code):
         return "us"
     if _is_hk_market(code):
         return "hk"
+    if _is_my_market(code):
+        return "my"
     return "cn"
 
 
@@ -748,14 +760,15 @@ class DataFetcherManager:
         total_fetchers = len(self._fetchers)
         request_start = time.time()
 
-        # 快速路径：美股指数与美股股票直接路由到 YfinanceFetcher
-        if is_us_index_code(stock_code) or is_us_stock_code(stock_code):
+        # 快速路径：美股 / 美股指数 / Bursa Malaysia 代码直接路由到 YfinanceFetcher
+        if is_us_index_code(stock_code) or is_us_stock_code(stock_code) or _is_my_market(stock_code):
+            route_label = "Bursa Malaysia" if _is_my_market(stock_code) else "美股/美股指数"
             for attempt, fetcher in enumerate(self._fetchers, start=1):
                 if fetcher.name == "YfinanceFetcher":
                     try:
                         logger.info(
                             f"[数据源尝试 {attempt}/{total_fetchers}] [{fetcher.name}] "
-                            f"美股/美股指数 {stock_code} 直接路由..."
+                            f"{route_label} {stock_code} 直接路由..."
                         )
                         df = fetcher.get_daily_data(
                             stock_code=stock_code,
@@ -780,7 +793,7 @@ class DataFetcherManager:
                         errors.append(error_msg)
                     break
             # YfinanceFetcher failed or not found
-            error_summary = f"美股/美股指数 {stock_code} 获取失败:\n" + "\n".join(errors)
+            error_summary = f"{route_label} {stock_code} 获取失败:\n" + "\n".join(errors)
             elapsed = time.time() - request_start
             logger.error(f"[数据源终止] {stock_code} 获取失败: elapsed={elapsed:.2f}s\n{error_summary}")
             raise DataFetchError(error_summary)
@@ -971,6 +984,22 @@ class DataFetcherManager:
                             logger.warning(f"[实时行情] 美股 {stock_code} 获取失败: {e}")
                     break
             logger.warning(f"[实时行情] 美股 {stock_code} 无可用数据源")
+            return None
+
+        # Bursa Malaysia 通过 Yfinance 处理。
+        if _is_my_market(stock_code):
+            for fetcher in self._fetchers:
+                if fetcher.name == "YfinanceFetcher":
+                    if hasattr(fetcher, 'get_realtime_quote'):
+                        try:
+                            quote = fetcher.get_realtime_quote(stock_code)
+                            if quote is not None:
+                                logger.info(f"[实时行情] Bursa Malaysia {stock_code} 成功获取 (来源: yfinance)")
+                                return quote
+                        except Exception as e:
+                            logger.warning(f"[实时行情] Bursa Malaysia {stock_code} 获取失败: {e}")
+                    break
+            logger.warning(f"[实时行情] Bursa Malaysia {stock_code} 无可用数据源")
             return None
 
         # 港股实时行情只走港股专用入口，避免按 A 股 source_priority
@@ -1676,7 +1705,7 @@ class DataFetcherManager:
         stock_code = normalize_stock_code(stock_code)
         market = _market_tag(stock_code)
         is_etf = _is_etf_code(stock_code)
-        if market in {"us", "hk"}:
+        if market in {"us", "hk", "my"}:
             return self._build_market_not_supported(
                 market=market,
                 reason="market not supported",

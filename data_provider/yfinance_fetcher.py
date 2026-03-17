@@ -31,7 +31,7 @@ from tenacity import (
     before_sleep_log,
 )
 
-from .base import BaseFetcher, DataFetchError, STANDARD_COLUMNS, is_bse_code
+from .base import BaseFetcher, DataFetchError, STANDARD_COLUMNS, _is_my_market, is_bse_code
 from .realtime_types import UnifiedRealtimeQuote, RealtimeSource
 from .us_index_mapping import get_us_index_yf_symbol, is_us_stock_code
 
@@ -86,6 +86,7 @@ class YfinanceFetcher(BaseFetcher):
         - A股沪市：600519.SS (Shanghai Stock Exchange)
         - A股深市：000001.SZ (Shenzhen Stock Exchange)
         - 港股：0700.HK (Hong Kong Stock Exchange)
+        - 马股：5183.KL (Bursa Malaysia)
         - 美股：AAPL, TSLA, GOOGL (无需后缀)
 
         Args:
@@ -123,7 +124,7 @@ class YfinanceFetcher(BaseFetcher):
             return f"{hk_code}.HK"
 
         # 已经包含后缀的情况
-        if '.SS' in code or '.SZ' in code or '.HK' in code or '.BJ' in code:
+        if '.SS' in code or '.SZ' in code or '.HK' in code or '.BJ' in code or '.KL' in code:
             return code
 
         # 去除可能的 .SH 后缀
@@ -379,6 +380,101 @@ class YfinanceFetcher(BaseFetcher):
         """
         return is_us_stock_code(stock_code)
 
+    def _get_equity_realtime_quote(
+        self,
+        user_code: str,
+        yf_symbol: str,
+        *,
+        fallback_to_stooq: bool = False,
+    ) -> Optional[UnifiedRealtimeQuote]:
+        """Get realtime quote for an equity symbol supported by yfinance."""
+        import yfinance as yf
+
+        try:
+            logger.debug(f"[Yfinance] 获取股票 {user_code} 实时行情 (yf={yf_symbol})")
+            ticker = yf.Ticker(yf_symbol)
+
+            try:
+                info = ticker.fast_info
+                if info is None:
+                    raise ValueError("fast_info is None")
+
+                price = getattr(info, 'lastPrice', None) or getattr(info, 'last_price', None)
+                prev_close = getattr(info, 'previousClose', None) or getattr(info, 'previous_close', None)
+                open_price = getattr(info, 'open', None)
+                high = getattr(info, 'dayHigh', None) or getattr(info, 'day_high', None)
+                low = getattr(info, 'dayLow', None) or getattr(info, 'day_low', None)
+                volume = getattr(info, 'lastVolume', None) or getattr(info, 'last_volume', None)
+                market_cap = getattr(info, 'marketCap', None) or getattr(info, 'market_cap', None)
+
+            except Exception:
+                logger.debug("[Yfinance] fast_info 失败，尝试 history 方法")
+                hist = ticker.history(period='2d')
+                if hist.empty:
+                    if fallback_to_stooq:
+                        logger.warning(f"[Yfinance] 无法获取 {user_code} 的数据，尝试 Stooq 兜底")
+                        return self._get_us_stock_quote_from_stooq(user_code)
+                    logger.warning(f"[Yfinance] 无法获取 {user_code} ({yf_symbol}) 的数据")
+                    return None
+
+                today = hist.iloc[-1]
+                prev = hist.iloc[-2] if len(hist) > 1 else today
+
+                price = float(today['Close'])
+                prev_close = float(prev['Close'])
+                open_price = float(today['Open'])
+                high = float(today['High'])
+                low = float(today['Low'])
+                volume = int(today['Volume'])
+                market_cap = None
+
+            change_amount = None
+            change_pct = None
+            if price is not None and prev_close is not None and prev_close > 0:
+                change_amount = price - prev_close
+                change_pct = (change_amount / prev_close) * 100
+
+            amplitude = None
+            if high is not None and low is not None and prev_close is not None and prev_close > 0:
+                amplitude = ((high - low) / prev_close) * 100
+
+            try:
+                info_name = ticker.info.get('shortName', '') or ticker.info.get('longName', '') or ''
+                name = info_name if is_meaningful_stock_name(info_name, user_code) else STOCK_NAME_MAP.get(user_code, '')
+            except Exception:
+                name = STOCK_NAME_MAP.get(user_code, '')
+
+            quote = UnifiedRealtimeQuote(
+                code=user_code,
+                name=name,
+                source=RealtimeSource.FALLBACK,
+                price=price,
+                change_pct=round(change_pct, 2) if change_pct is not None else None,
+                change_amount=round(change_amount, 4) if change_amount is not None else None,
+                volume=volume,
+                amount=None,
+                volume_ratio=None,
+                turnover_rate=None,
+                amplitude=round(amplitude, 2) if amplitude is not None else None,
+                open_price=open_price,
+                high=high,
+                low=low,
+                pre_close=prev_close,
+                pe_ratio=None,
+                pb_ratio=None,
+                total_mv=market_cap,
+                circ_mv=None,
+            )
+
+            logger.info(f"[Yfinance] 获取股票 {user_code} 实时行情成功: 价格={price}")
+            return quote
+
+        except Exception as e:
+            logger.warning(f"[Yfinance] 获取股票 {user_code} 实时行情失败: {e}")
+            if fallback_to_stooq:
+                return self._get_us_stock_quote_from_stooq(user_code)
+            return None
+
     def _get_us_stock_quote_from_stooq(self, stock_code: str) -> Optional[UnifiedRealtimeQuote]:
         """
         使用 Stooq 为美股实时行情提供免密钥兜底。
@@ -617,9 +713,10 @@ class YfinanceFetcher(BaseFetcher):
 
     def get_realtime_quote(self, stock_code: str) -> Optional[UnifiedRealtimeQuote]:
         """
-        获取美股/美股指数实时行情数据
+        获取 YFinance 支持的股票/指数实时行情数据
 
-        支持美股股票（AAPL、TSLA）和美股指数（SPX、DJI 等）。
+        支持美股股票（AAPL、TSLA）、美股指数（SPX、DJI 等）和 Bursa Malaysia
+        的 `.KL` 股票代码。
         数据来源：yfinance Ticker.info
 
         Args:
@@ -628,8 +725,6 @@ class YfinanceFetcher(BaseFetcher):
         Returns:
             UnifiedRealtimeQuote 对象，获取失败返回 None
         """
-        import yfinance as yf
-
         # 美股指数：使用映射（SPX -> ^GSPC）
         yf_symbol, index_name = get_us_index_yf_symbol(stock_code)
         if yf_symbol:
@@ -639,97 +734,23 @@ class YfinanceFetcher(BaseFetcher):
                 index_name=index_name,
             )
 
-        # 仅处理美股股票
-        if not self._is_us_stock(stock_code):
-            logger.debug(f"[Yfinance] {stock_code} 不是美股，跳过")
-            return None
-
-        try:
-            symbol = stock_code.strip().upper()
-            logger.debug(f"[Yfinance] 获取美股 {symbol} 实时行情")
-
-            ticker = yf.Ticker(symbol)
-
-            # 尝试获取 fast_info（更快，但字段较少）
-            try:
-                info = ticker.fast_info
-                if info is None:
-                    raise ValueError("fast_info is None")
-
-                price = getattr(info, 'lastPrice', None) or getattr(info, 'last_price', None)
-                prev_close = getattr(info, 'previousClose', None) or getattr(info, 'previous_close', None)
-                open_price = getattr(info, 'open', None)
-                high = getattr(info, 'dayHigh', None) or getattr(info, 'day_high', None)
-                low = getattr(info, 'dayLow', None) or getattr(info, 'day_low', None)
-                volume = getattr(info, 'lastVolume', None) or getattr(info, 'last_volume', None)
-                market_cap = getattr(info, 'marketCap', None) or getattr(info, 'market_cap', None)
-
-            except Exception:
-                # 回退到 history 方法获取最新数据
-                logger.debug("[Yfinance] fast_info 失败，尝试 history 方法")
-                hist = ticker.history(period='2d')
-                if hist.empty:
-                    logger.warning(f"[Yfinance] 无法获取 {symbol} 的数据，尝试 Stooq 兜底")
-                    return self._get_us_stock_quote_from_stooq(symbol)
-
-                today = hist.iloc[-1]
-                prev = hist.iloc[-2] if len(hist) > 1 else today
-
-                price = float(today['Close'])
-                prev_close = float(prev['Close'])
-                open_price = float(today['Open'])
-                high = float(today['High'])
-                low = float(today['Low'])
-                volume = int(today['Volume'])
-                market_cap = None
-
-            # 计算涨跌幅
-            change_amount = None
-            change_pct = None
-            if price is not None and prev_close is not None and prev_close > 0:
-                change_amount = price - prev_close
-                change_pct = (change_amount / prev_close) * 100
-
-            # 计算振幅
-            amplitude = None
-            if high is not None and low is not None and prev_close is not None and prev_close > 0:
-                amplitude = ((high - low) / prev_close) * 100
-
-            # 获取股票名称
-            try:
-                info_name = ticker.info.get('shortName', '') or ticker.info.get('longName', '') or ''
-                name = info_name if is_meaningful_stock_name(info_name, symbol) else STOCK_NAME_MAP.get(symbol, '')
-            except Exception:
-                name = STOCK_NAME_MAP.get(symbol, '')
-
-            quote = UnifiedRealtimeQuote(
-                code=symbol,
-                name=name,
-                source=RealtimeSource.FALLBACK,
-                price=price,
-                change_pct=round(change_pct, 2) if change_pct is not None else None,
-                change_amount=round(change_amount, 4) if change_amount is not None else None,
-                volume=volume,
-                amount=None,  # yfinance 不直接提供成交额
-                volume_ratio=None,
-                turnover_rate=None,
-                amplitude=round(amplitude, 2) if amplitude is not None else None,
-                open_price=open_price,
-                high=high,
-                low=low,
-                pre_close=prev_close,
-                pe_ratio=None,
-                pb_ratio=None,
-                total_mv=market_cap,
-                circ_mv=None,
+        symbol = stock_code.strip().upper()
+        if self._is_us_stock(stock_code):
+            return self._get_equity_realtime_quote(
+                user_code=symbol,
+                yf_symbol=symbol,
+                fallback_to_stooq=True,
             )
 
-            logger.info(f"[Yfinance] 获取美股 {symbol} 实时行情成功: 价格={price}")
-            return quote
+        if _is_my_market(stock_code):
+            return self._get_equity_realtime_quote(
+                user_code=symbol,
+                yf_symbol=self._convert_stock_code(stock_code),
+                fallback_to_stooq=False,
+            )
 
-        except Exception as e:
-            logger.warning(f"[Yfinance] 获取美股 {stock_code} 实时行情失败: {e}，尝试 Stooq 兜底")
-            return self._get_us_stock_quote_from_stooq(stock_code)
+        logger.debug(f"[Yfinance] {stock_code} 不是当前支持的 yfinance realtime 市场，跳过")
+        return None
 
 
 if __name__ == "__main__":

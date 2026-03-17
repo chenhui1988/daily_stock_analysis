@@ -27,6 +27,7 @@ class AnalyzeCommand(BotCommand):
     用法：
         /analyze 600519       - 分析贵州茅台（精简报告）
         /analyze 600519 full  - 分析并生成完整报告
+        /analyze 5183.KL      - 分析 Bursa Malaysia 股票
     """
     
     @property
@@ -55,13 +56,15 @@ class AnalyzeCommand(BotCommand):
         # 验证股票代码格式
         # A股：6位数字
         # 港股：HK+5位数字
+        # 马股：Yahoo .KL 后缀
         # 美股：1-5个大写字母+.+2个后缀字母
         is_a_stock = re.match(r'^\d{6}$', code)
         is_hk_stock = re.match(r'^HK\d{5}$', code)
+        is_my_stock = re.match(r'^[A-Z0-9]{1,6}\.KL$', code)
         is_us_stock = re.match(r'^[A-Z]{1,5}(\.[A-Z]{1,2})?$', code)
 
-        if not (is_a_stock or is_hk_stock or is_us_stock):
-            return f"无效的股票代码: {code}（A股6位数字 / 港股HK+5位数字 / 美股1-5个字母）"
+        if not (is_a_stock or is_hk_stock or is_my_stock or is_us_stock):
+            return f"无效的股票代码: {code}（A股6位数字 / 港股HK+5位数字 / 马股XXXX.KL / 美股1-5个字母）"
         
         return None
     

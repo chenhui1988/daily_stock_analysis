@@ -30,11 +30,13 @@ def _strip_exchange_prefix(text: str) -> Optional[str]:
 
 
 def is_code_like(value: str) -> bool:
-    """Check if string looks like a stock code (5-6 digits, 1-5 letters, or prefixed code)."""
+    """Check if string looks like a supported stock code."""
     text = value.strip().upper()
     if not text:
         return False
     if text.isdigit() and len(text) in (5, 6):
+        return True
+    if re.match(r"^[A-Z0-9]{1,6}\.KL$", text):
         return True
     for suffix in (".SH", ".SZ", ".SS"):
         if text.endswith(suffix):
@@ -57,11 +59,14 @@ def normalize_code(raw: str) -> Optional[str]:
     - Suffix format: 600519.SH, 600519.SZ
     - Prefix format: SH600519, SZ000001, HK00700 (case-insensitive)
     - US ticker symbols: AAPL, TSLA
+    - Bursa Malaysia Yahoo format: 5183.KL
     """
     text = raw.strip().upper()
     if not text:
         return None
     if text.isdigit() and len(text) in (5, 6):
+        return text
+    if re.match(r"^[A-Z0-9]{1,6}\.KL$", text):
         return text
     if re.match(r"^[A-Z]{1,5}(\.[A-Z])?$", text):
         return text
