@@ -12,7 +12,6 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pandas as pd
-from fastapi.testclient import TestClient
 
 try:
     import litellm  # noqa: F401
@@ -26,6 +25,7 @@ from src.services.portfolio_import_service import PortfolioImportService
 from src.services.portfolio_risk_service import PortfolioRiskService
 from src.services.portfolio_service import PortfolioService
 from src.storage import DatabaseManager
+from tests.asgi_test_client import SyncASGITestClient
 
 
 def _reset_auth_globals() -> None:
@@ -74,9 +74,10 @@ class PortfolioPr2TestCase(unittest.TestCase):
         self.risk_service = PortfolioRiskService(portfolio_service=self.service)
         self._board_fetch_patcher = patch.object(PortfolioRiskService, "_fetch_belong_boards", return_value=[])
         self._board_fetch_patcher.start()
-        self.client = TestClient(create_app(static_dir=data_dir / "empty-static"))
+        self.client = SyncASGITestClient(create_app(static_dir=data_dir / "empty-static"))
 
     def tearDown(self) -> None:
+        self.client.close()
         DatabaseManager.reset_instance()
         Config.reset_instance()
         os.environ.pop("ENV_FILE", None)
