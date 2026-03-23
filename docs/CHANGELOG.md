@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### 新功能
 
+- 🇲🇾 **Bursa Malaysia (`.KL`) 第一阶段支持** — 新增 `XXXX.KL` 代码链路支持，覆盖单股分析、历史/实时行情、图片提取/导入解析、Bot `/analyze` `/ask`、Web/API 输入校验，以及持仓市场枚举 `my` 与默认币种 `MYR`。当前 `MARKET_REVIEW_REGION` 仍保持 `cn / us / both`，未扩展到 `my`。
 - 📱 **Social Sentiment Intelligence (US stocks)** — 新增 Reddit / X (Twitter) / Polymarket 社交媒体情绪数据源，为美股分析提供实时社交舆情情报。数据来自 api.adanos.org，包含 Buzz Score、情绪评分、提及量等指标。完全可选（需配置 `SOCIAL_SENTIMENT_API_KEY`），仅对美股生效，A 股 / 港股不受影响。
 ### 文档
 

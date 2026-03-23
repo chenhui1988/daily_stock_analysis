@@ -1196,6 +1196,10 @@ def _extract_stock_code(text: str) -> str:
     m = re.search(r'(?<![a-zA-Z])(hk\d{5})(?!\d)', text, re.IGNORECASE)
     if m:
         return m.group(1).upper()
+    # Bursa Malaysia (.KL)
+    m = re.search(r'(?<![a-zA-Z0-9])([A-Z0-9]{1,6}\.KL)(?![a-zA-Z0-9])', text, re.IGNORECASE)
+    if m:
+        return m.group(1).upper()
     # US ticker — require 2+ uppercase letters bounded by non-alpha chars.
     m = re.search(r'(?<![a-zA-Z])([A-Z]{2,5}(?:\.[A-Z]{1,2})?)(?![a-zA-Z])', text)
     if m:
@@ -1204,7 +1208,7 @@ def _extract_stock_code(text: str) -> str:
             return candidate
 
     stripped = (text or "").strip()
-    bare_match = re.fullmatch(r'([A-Za-z]{2,5}(?:\.[A-Za-z]{1,2})?)', stripped)
+    bare_match = re.fullmatch(r'([A-Za-z0-9]{1,6}\.KL|[A-Za-z]{2,5}(?:\.[A-Za-z]{1,2})?)', stripped, re.IGNORECASE)
     if bare_match:
         candidate = bare_match.group(1).upper()
         if candidate not in _COMMON_WORDS:

@@ -185,7 +185,7 @@ class CommandDispatcher:
 
 |------|------|------|------|
 
-| /analyze | /a, 分析 | 分析指定股票 | `/analyze 600519` |
+| /analyze | /a, 分析 | 分析指定股票 | `/analyze 600519` / `/analyze 5183.KL` |
 
 | /market | /m, 大盘 | 大盘复盘 | `/market` |
 
@@ -194,6 +194,8 @@ class CommandDispatcher:
 | /help | /h, 帮助 | 显示帮助信息 | `/help` |
 
 | /status | /s, 状态 | 系统状态 | `/status` |
+
+> 股票代码格式：A股使用 6 位数字；港股使用 `HK` + 5 位数字；Bursa Malaysia 使用 `XXXX.KL`；美股使用 1-5 位字母代码。
 
 ## 五、Webhook 路由
 
@@ -262,4 +264,3 @@ telegram_webhook_secret: str           # 新增：Webhook 密钥
     bot_rate_limit_window: int = 60       # 频率限制：窗口时间（秒）
     bot_admin_users: List[str] = field(default_factory=list)  # 管理员用户 ID 列表，限制敏感操作
 ```
-

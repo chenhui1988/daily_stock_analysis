@@ -152,7 +152,7 @@ class BotCommand(ABC):
 
 | Command | Description | Example |
 |---------|-------------|---------|
-| `/analyze` | Analyze a specific stock | `/analyze AAPL` or `/analyze 600519` |
+| `/analyze` | Analyze a specific stock | `/analyze AAPL`, `/analyze 600519`, or `/analyze 5183.KL` |
 | `/ask` | Single-turn question about a stock or the market | `/ask what is RSI for AAPL` |
 | `/batch` | Batch-analyze your configured watchlist | `/batch` |
 | `/chat` | Multi-turn strategy chat (maintains conversation context) | `/chat` |
@@ -160,7 +160,7 @@ class BotCommand(ABC):
 | `/help` | Show help text | `/help` |
 | `/status` | Show system status | `/status` |
 
-> **Stock code formats:** A-shares use 6-digit codes (e.g. `600519`); HK stocks prefix `hk` (e.g. `hk00700`); US stocks use ticker symbols (e.g. `AAPL`, `TSLA`).
+> **Stock code formats:** A-shares use 6-digit codes (e.g. `600519`); HK stocks prefix `hk` (e.g. `hk00700`); Bursa Malaysia uses Yahoo-style `.KL` symbols (e.g. `5183.KL`); US stocks use ticker symbols (e.g. `AAPL`, `TSLA`).
 
 ---
 

@@ -12,7 +12,6 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 import pandas as pd
-from fastapi.testclient import TestClient
 
 # Keep this test runnable when optional LLM runtime deps are not installed.
 try:
@@ -24,6 +23,7 @@ import src.auth as auth
 from api.app import create_app
 from src.config import Config
 from src.storage import DatabaseManager
+from tests.asgi_test_client import SyncASGITestClient
 
 
 def _reset_auth_globals() -> None:
@@ -61,10 +61,11 @@ class PortfolioApiTestCase(unittest.TestCase):
         Config.reset_instance()
         DatabaseManager.reset_instance()
         app = create_app(static_dir=self.data_dir / "empty-static")
-        self.client = TestClient(app)
+        self.client = SyncASGITestClient(app)
         self.db = DatabaseManager.get_instance()
 
     def tearDown(self) -> None:
+        self.client.close()
         DatabaseManager.reset_instance()
         Config.reset_instance()
         os.environ.pop("ENV_FILE", None)
@@ -148,6 +149,16 @@ class PortfolioApiTestCase(unittest.TestCase):
         self.assertEqual(resp.status_code, 400)
         detail = resp.json()
         self.assertEqual(detail.get("error"), "validation_error")
+
+    def test_create_my_account_defaults_base_currency_to_myr(self) -> None:
+        resp = self.client.post(
+            "/api/v1/portfolio/accounts",
+            json={"name": "MY Account", "broker": "Demo", "market": "my"},
+        )
+        self.assertEqual(resp.status_code, 200)
+        payload = resp.json()
+        self.assertEqual(payload["market"], "my")
+        self.assertEqual(payload["base_currency"], "MYR")
 
     def test_duplicate_trade_uid_returns_409(self) -> None:
         create_resp = self.client.post(

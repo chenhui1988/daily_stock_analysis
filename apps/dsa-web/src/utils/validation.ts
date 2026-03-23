@@ -4,7 +4,7 @@ interface ValidationResult {
   normalized: string;
 }
 
-// 兼容 A/H/美股常见代码格式的基础校验
+// 兼容 A/H/US/Bursa Malaysia 常见代码格式的基础校验
 export const validateStockCode = (value: string): ValidationResult => {
   const normalized = value.trim().toUpperCase();
 
@@ -18,6 +18,7 @@ export const validateStockCode = (value: string): ValidationResult => {
     /^\d{5}$/, // 港股 5 位数字（无前缀）
     /^HK\d{1,5}$/, // 港股 HK 前缀格式，如 HK00700、HK01810、HK1810
     /^\d{1,5}\.HK$/, // 港股 .HK 后缀格式，如 00700.HK、1810.HK
+    /^[A-Z0-9]{1,6}\.KL$/, // Bursa Malaysia / Yahoo Finance 格式，如 5183.KL
     /^[A-Z]{1,6}(\.[A-Z]{1,2})?$/, // 美股常见 Ticker
   ];
 

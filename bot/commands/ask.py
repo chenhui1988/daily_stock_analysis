@@ -55,6 +55,7 @@ class AskCommand(BotCommand):
         /ask 600519 用缠论分析          -> Automatically selects chan_theory strategy
         /ask 600519 chan_theory         -> Directly specify strategy id
         /ask hk00700 波浪理论看看       -> HK stock with wave_theory
+        /ask 5183.KL 波浪理论看看       -> Bursa Malaysia stock with wave_theory
     """
 
     @property
@@ -81,10 +82,11 @@ class AskCommand(BotCommand):
         code = args[0].upper()
         is_a_stock = re.match(r"^\d{6}$", code)
         is_hk_stock = re.match(r"^HK\d{5}$", code)
+        is_my_stock = re.match(r"^[A-Z0-9]{1,6}\.KL$", code)
         is_us_stock = re.match(r"^[A-Z]{1,5}(\.[A-Z]{1,2})?$", code)
 
-        if not (is_a_stock or is_hk_stock or is_us_stock):
-            return f"无效的股票代码: {code}（A股6位数字 / 港股HK+5位数字 / 美股1-5个字母）"
+        if not (is_a_stock or is_hk_stock or is_my_stock or is_us_stock):
+            return f"无效的股票代码: {code}（A股6位数字 / 港股HK+5位数字 / 马股XXXX.KL / 美股1-5个字母）"
 
         return None
 
